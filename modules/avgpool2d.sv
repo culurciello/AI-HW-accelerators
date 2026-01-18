@@ -12,8 +12,8 @@ module avgpool2d #(
 );
   localparam int OUT_H = (IN_H - K) / STRIDE + 1;
   localparam int OUT_W = (IN_W - K) / STRIDE + 1;
-  localparam int ACC_WIDTH = WIDTH + $clog2(K*K);
-  localparam int SHIFT = $clog2(K*K);
+  localparam int ACC_WIDTH = WIDTH + $clog2(K*K) + 1;
+  localparam int DENOM = K*K;
 
   function automatic logic signed [WIDTH-1:0] get_in(
     input int ch,
@@ -33,9 +33,6 @@ module avgpool2d #(
   integer kh;
   integer kw;
   logic signed [ACC_WIDTH-1:0] acc;
-  logic signed [ACC_WIDTH-1:0] acc_round;
-  logic signed [ACC_WIDTH-1:0] rounding;
-  logic signed [ACC_WIDTH-1:0] shifted;
   logic signed [ACC_WIDTH-1:0] abs_acc;
   logic signed [ACC_WIDTH-1:0] rounded_mag;
   logic signed [WIDTH-1:0] out_elem;
@@ -44,7 +41,6 @@ module avgpool2d #(
 
   always_comb begin
     out_vec = '0;
-    rounding = ({{(ACC_WIDTH-1){1'b0}}, 1'b1} <<< (SHIFT-1));
     for (c = 0; c < CH; c = c + 1) begin
       for (oh = 0; oh < OUT_H; oh = oh + 1) begin
         for (ow = 0; ow < OUT_W; ow = ow + 1) begin
@@ -56,14 +52,11 @@ module avgpool2d #(
           end
           if (acc[ACC_WIDTH-1]) begin
             abs_acc = -acc;
-            acc_round = abs_acc + rounding;
-            shifted = acc_round >>> SHIFT;
-            rounded_mag = shifted;
+            rounded_mag = (abs_acc + (DENOM/2)) / DENOM;
             out_elem = -rounded_mag[WIDTH-1:0];
           end else begin
-            acc_round = acc + rounding;
-            shifted = acc_round >>> SHIFT;
-            out_elem = shifted[WIDTH-1:0];
+            rounded_mag = (acc + (DENOM/2)) / DENOM;
+            out_elem = rounded_mag[WIDTH-1:0];
           end
           out_vec[((c*OUT_H + oh)*OUT_W + ow)*WIDTH +: WIDTH] = out_elem;
         end

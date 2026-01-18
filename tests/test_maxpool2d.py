@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 
 from common import (
     FRAC,
@@ -24,6 +25,7 @@ def _build_tb(
     in_w: int,
     k: int,
     stride: int,
+    padding: int,
 ) -> None:
     tb_text = f"""`timescale 1ns/1ps
 /* verilator lint_off DECLFILENAME */
@@ -35,8 +37,9 @@ module tb;
   localparam int IN_W = {in_w};
   localparam int K = {k};
   localparam int STRIDE = {stride};
-  localparam int OUT_H = (IN_H - K) / STRIDE + 1;
-  localparam int OUT_W = (IN_W - K) / STRIDE + 1;
+  localparam int PADDING = {padding};
+  localparam int OUT_H = (IN_H + 2*PADDING - K) / STRIDE + 1;
+  localparam int OUT_W = (IN_W + 2*PADDING - K) / STRIDE + 1;
 
   logic signed [CH*IN_H*IN_W*WIDTH-1:0] in_vec;
   logic signed [CH*OUT_H*OUT_W*WIDTH-1:0] out_vec;
@@ -59,12 +62,13 @@ module tb;
     $finish;
   end
 
-  avgpool2d #(
+  maxpool2d #(
     .CH(CH),
     .IN_H(IN_H),
     .IN_W(IN_W),
     .K(K),
     .STRIDE(STRIDE),
+    .PADDING(PADDING),
     .WIDTH(WIDTH)
   ) dut (
     .in_vec(in_vec),
@@ -75,49 +79,33 @@ endmodule
     tb_path.write_text(tb_text, encoding="ascii")
 
 
-def test_avgpool2d() -> None:
-    torch.manual_seed(11)
+def test_maxpool2d() -> None:
+    torch.manual_seed(14)
     ch = 2
-    in_h = 4
-    in_w = 4
-    k = 2
+    in_h = 5
+    in_w = 5
+    k = 3
     stride = 2
+    padding = 1
 
     x_f = torch.rand((1, ch, in_h, in_w), dtype=torch.float32) * 2.0 - 1.0
     x_q = q88_from_float_tensor(x_f)
 
-    denom = k * k
-    x_int = x_q.to(torch.int32)
-    out_h = (in_h - k) // stride + 1
-    out_w = (in_w - k) // stride + 1
-    y_q = torch.zeros((ch, out_h, out_w), dtype=torch.int16)
-    for c in range(ch):
-        for oh in range(out_h):
-            for ow in range(out_w):
-                patch = x_int[
-                    0,
-                    c,
-                    oh * stride : oh * stride + k,
-                    ow * stride : ow * stride + k,
-                ]
-                acc = int(patch.sum().item())
-                if acc < 0:
-                    acc = -((-acc + denom // 2) // denom)
-                else:
-                    acc = (acc + denom // 2) // denom
-                y_q[c, oh, ow] = acc
+    x_ref = x_q.to(torch.float32) / (1 << FRAC)
+    y_f = F.max_pool2d(x_ref, kernel_size=k, stride=stride, padding=padding)
+    y_q = q88_from_float_tensor(y_f).squeeze(0)
 
-    build_dir = REPO_ROOT / "tests" / "build" / "avgpool2d"
+    build_dir = REPO_ROOT / "tests" / "build" / "maxpool2d"
     input_mem = build_dir / "input.mem"
-    tb_path = build_dir / "tb_avgpool2d.sv"
+    tb_path = build_dir / "tb_maxpool2d.sv"
     output_mem = build_dir / "output.mem"
 
     write_mem(input_mem, x_q.squeeze(0).flatten().tolist())
 
-    _build_tb(tb_path, input_mem, output_mem, ch, in_h, in_w, k, stride)
+    _build_tb(tb_path, input_mem, output_mem, ch, in_h, in_w, k, stride, padding)
 
     sv_sources = [
-        REPO_ROOT / "modules" / "avgpool2d.sv",
+        REPO_ROOT / "modules" / "maxpool2d.sv",
     ]
     run_verilator(tb_path, sv_sources)
     hw_out = read_mem(output_mem)
@@ -134,4 +122,4 @@ def test_avgpool2d() -> None:
 
 
 if __name__ == "__main__":
-    test_avgpool2d()
+    test_maxpool2d()

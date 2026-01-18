@@ -4,12 +4,21 @@ from pathlib import Path
 
 import torch
 
-from common import FRAC, REPO_ROOT, WIDTH, tanh_lut_q88, read_mem, run_verilator, write_mem
+from common import (
+    FRAC,
+    REPO_ROOT,
+    WIDTH,
+    q88_from_float_tensor,
+    read_mem,
+    run_verilator,
+    write_mem,
+)
 
 
 def _build_tb(
     tb_path: Path,
-    input_mem: Path,
+    a_mem: Path,
+    b_mem: Path,
     output_mem: Path,
     dim: int,
 ) -> None:
@@ -18,20 +27,23 @@ def _build_tb(
 module tb;
 /* verilator lint_on DECLFILENAME */
   localparam int WIDTH = {WIDTH};
-  localparam int FRAC = {FRAC};
   localparam int DIM = {dim};
 
-  logic signed [DIM*WIDTH-1:0] in_vec;
+  logic signed [DIM*WIDTH-1:0] a_vec;
+  logic signed [DIM*WIDTH-1:0] b_vec;
   logic signed [DIM*WIDTH-1:0] out_vec;
-  logic signed [WIDTH-1:0] in_mem [0:DIM-1];
+  logic signed [WIDTH-1:0] a_mem [0:DIM-1];
+  logic signed [WIDTH-1:0] b_mem [0:DIM-1];
 
   integer i;
   integer fd;
 
   initial begin
-    $readmemh("{input_mem.as_posix()}", in_mem);
+    $readmemh("{a_mem.as_posix()}", a_mem);
+    $readmemh("{b_mem.as_posix()}", b_mem);
     for (i = 0; i < DIM; i = i + 1) begin
-      in_vec[i*WIDTH +: WIDTH] = in_mem[i];
+      a_vec[i*WIDTH +: WIDTH] = a_mem[i];
+      b_vec[i*WIDTH +: WIDTH] = b_mem[i];
     end
     #1;
     fd = $fopen("{output_mem.as_posix()}", "w");
@@ -42,12 +54,12 @@ module tb;
     $finish;
   end
 
-  tanh #(
+  add_vec #(
     .DIM(DIM),
-    .WIDTH(WIDTH),
-    .FRAC(FRAC)
+    .WIDTH(WIDTH)
   ) dut (
-    .in_vec(in_vec),
+    .a_vec(a_vec),
+    .b_vec(b_vec),
     .out_vec(out_vec)
   );
 endmodule
@@ -55,26 +67,29 @@ endmodule
     tb_path.write_text(tb_text, encoding="ascii")
 
 
-def test_tanh() -> None:
-    torch.manual_seed(12)
+def test_add_vec() -> None:
+    torch.manual_seed(15)
     dim = 16
 
-    x_f = torch.rand((dim,), dtype=torch.float32) * 2.0 - 1.0
-    x_q = q88_from_float_tensor(x_f)
+    a_f = torch.rand((dim,), dtype=torch.float32) * 2.0 - 1.0
+    b_f = torch.rand((dim,), dtype=torch.float32) * 2.0 - 1.0
+    a_q = q88_from_float_tensor(a_f)
+    b_q = q88_from_float_tensor(b_f)
+    y_q = (a_q + b_q).to(torch.int16)
 
-    y_q = tanh_lut_q88(x_q)
-
-    build_dir = REPO_ROOT / "tests" / "build" / "tanh"
-    input_mem = build_dir / "input.mem"
-    tb_path = build_dir / "tb_tanh.sv"
+    build_dir = REPO_ROOT / "tests" / "build" / "add_vec"
+    a_mem = build_dir / "a.mem"
+    b_mem = build_dir / "b.mem"
+    tb_path = build_dir / "tb_add_vec.sv"
     output_mem = build_dir / "output.mem"
 
-    write_mem(input_mem, x_q.tolist())
+    write_mem(a_mem, a_q.tolist())
+    write_mem(b_mem, b_q.tolist())
 
-    _build_tb(tb_path, input_mem, output_mem, dim)
+    _build_tb(tb_path, a_mem, b_mem, output_mem, dim)
 
     sv_sources = [
-        REPO_ROOT / "modules" / "tanh.sv",
+        REPO_ROOT / "modules" / "add_vec.sv",
     ]
     run_verilator(tb_path, sv_sources)
     hw_out = read_mem(output_mem)
@@ -91,4 +106,4 @@ def test_tanh() -> None:
 
 
 if __name__ == "__main__":
-    test_tanh()
+    test_add_vec()

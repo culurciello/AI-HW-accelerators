@@ -31,6 +31,10 @@ python tests/test_mlp_c1_real.py
 # LeNet-5
 python networks/lenet5/lenet5.py
 python tests/test_lenet5_real.py
+
+# ResNet-18 (pretrained weights may require download)
+python networks/resnet18/resnet18.py
+python tests/test_resnet18_real.py
 ```
 
 Module-level tests:
@@ -40,6 +44,9 @@ python tests/test_linear.py
 python tests/test_relu.py
 python tests/test_conv2d.py
 python tests/test_avgpool2d.py
+python tests/test_maxpool2d.py
+python tests/test_batchnorm2d.py
+python tests/test_add_vec.py
 python tests/test_tanh.py
 ```
 
@@ -51,3 +58,4 @@ python tests/test_tanh.py
 ## Networks
 - `mlp_c1`: 10 -> 32 -> 32 -> 2 with ReLU between layers.
 - `lenet5`: classic LeNet-5 (Conv/Tanh/AvgPool/FC) with biases.
+- `resnet18`: standard ResNet-18 (Conv/BN/ReLU/MaxPool/AvgPool/FC).

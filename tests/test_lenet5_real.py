@@ -13,6 +13,7 @@ from common import (
     q88_from_float_tensor,
     read_mem,
     run_verilator,
+    tanh_lut_q88,
     write_mem,
 )
 
@@ -43,9 +44,7 @@ def avgpool2d_q88(x_q: torch.Tensor) -> torch.Tensor:
 
 
 def tanh_q88(x_q: torch.Tensor) -> torch.Tensor:
-    x_f = x_q.to(torch.float32) / SCALE
-    y_f = torch.tanh(x_f)
-    return q88_from_float_tensor(y_f)
+    return tanh_lut_q88(x_q)
 
 
 def linear_q88_with_bias(x_q: torch.Tensor, w_q: torch.Tensor, b_q: torch.Tensor) -> torch.Tensor:

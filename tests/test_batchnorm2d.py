@@ -18,28 +18,25 @@ from common import (
 def _build_tb(
     tb_path: Path,
     input_mem: Path,
+    scale_mem: Path,
+    bias_mem: Path,
     output_mem: Path,
     ch: int,
     in_h: int,
     in_w: int,
-    k: int,
-    stride: int,
 ) -> None:
     tb_text = f"""`timescale 1ns/1ps
 /* verilator lint_off DECLFILENAME */
 module tb;
 /* verilator lint_on DECLFILENAME */
   localparam int WIDTH = {WIDTH};
+  localparam int FRAC = {FRAC};
   localparam int CH = {ch};
   localparam int IN_H = {in_h};
   localparam int IN_W = {in_w};
-  localparam int K = {k};
-  localparam int STRIDE = {stride};
-  localparam int OUT_H = (IN_H - K) / STRIDE + 1;
-  localparam int OUT_W = (IN_W - K) / STRIDE + 1;
 
   logic signed [CH*IN_H*IN_W*WIDTH-1:0] in_vec;
-  logic signed [CH*OUT_H*OUT_W*WIDTH-1:0] out_vec;
+  logic signed [CH*IN_H*IN_W*WIDTH-1:0] out_vec;
   logic signed [WIDTH-1:0] in_mem [0:CH*IN_H*IN_W-1];
 
   integer i;
@@ -52,20 +49,21 @@ module tb;
     end
     #1;
     fd = $fopen("{output_mem.as_posix()}", "w");
-    for (i = 0; i < CH*OUT_H*OUT_W; i = i + 1) begin
+    for (i = 0; i < CH*IN_H*IN_W; i = i + 1) begin
       $fdisplay(fd, "%0h", out_vec[i*WIDTH +: WIDTH]);
     end
     $fclose(fd);
     $finish;
   end
 
-  avgpool2d #(
+  batchnorm2d #(
     .CH(CH),
     .IN_H(IN_H),
     .IN_W(IN_W),
-    .K(K),
-    .STRIDE(STRIDE),
-    .WIDTH(WIDTH)
+    .WIDTH(WIDTH),
+    .FRAC(FRAC),
+    .SCALE_FILE("{scale_mem.as_posix()}"),
+    .BIAS_FILE("{bias_mem.as_posix()}")
   ) dut (
     .in_vec(in_vec),
     .out_vec(out_vec)
@@ -75,49 +73,41 @@ endmodule
     tb_path.write_text(tb_text, encoding="ascii")
 
 
-def test_avgpool2d() -> None:
-    torch.manual_seed(11)
-    ch = 2
+def test_batchnorm2d() -> None:
+    torch.manual_seed(13)
+    ch = 3
     in_h = 4
     in_w = 4
-    k = 2
-    stride = 2
 
     x_f = torch.rand((1, ch, in_h, in_w), dtype=torch.float32) * 2.0 - 1.0
+    scale_f = torch.rand((ch,), dtype=torch.float32) * 2.0 - 1.0
+    bias_f = torch.rand((ch,), dtype=torch.float32) * 2.0 - 1.0
+
     x_q = q88_from_float_tensor(x_f)
+    scale_q = q88_from_float_tensor(scale_f)
+    bias_q = q88_from_float_tensor(bias_f)
 
-    denom = k * k
-    x_int = x_q.to(torch.int32)
-    out_h = (in_h - k) // stride + 1
-    out_w = (in_w - k) // stride + 1
-    y_q = torch.zeros((ch, out_h, out_w), dtype=torch.int16)
-    for c in range(ch):
-        for oh in range(out_h):
-            for ow in range(out_w):
-                patch = x_int[
-                    0,
-                    c,
-                    oh * stride : oh * stride + k,
-                    ow * stride : ow * stride + k,
-                ]
-                acc = int(patch.sum().item())
-                if acc < 0:
-                    acc = -((-acc + denom // 2) // denom)
-                else:
-                    acc = (acc + denom // 2) // denom
-                y_q[c, oh, ow] = acc
+    x_ref = x_q.to(torch.float32) / (1 << FRAC)
+    scale_ref = scale_q.to(torch.float32) / (1 << FRAC)
+    bias_ref = bias_q.to(torch.float32) / (1 << FRAC)
+    y_f = x_ref * scale_ref.view(1, ch, 1, 1) + bias_ref.view(1, ch, 1, 1)
+    y_q = q88_from_float_tensor(y_f).squeeze(0)
 
-    build_dir = REPO_ROOT / "tests" / "build" / "avgpool2d"
+    build_dir = REPO_ROOT / "tests" / "build" / "batchnorm2d"
     input_mem = build_dir / "input.mem"
-    tb_path = build_dir / "tb_avgpool2d.sv"
+    scale_mem = build_dir / "scale.mem"
+    bias_mem = build_dir / "bias.mem"
+    tb_path = build_dir / "tb_batchnorm2d.sv"
     output_mem = build_dir / "output.mem"
 
     write_mem(input_mem, x_q.squeeze(0).flatten().tolist())
+    write_mem(scale_mem, scale_q.flatten().tolist())
+    write_mem(bias_mem, bias_q.flatten().tolist())
 
-    _build_tb(tb_path, input_mem, output_mem, ch, in_h, in_w, k, stride)
+    _build_tb(tb_path, input_mem, scale_mem, bias_mem, output_mem, ch, in_h, in_w)
 
     sv_sources = [
-        REPO_ROOT / "modules" / "avgpool2d.sv",
+        REPO_ROOT / "modules" / "batchnorm2d.sv",
     ]
     run_verilator(tb_path, sv_sources)
     hw_out = read_mem(output_mem)
@@ -134,4 +124,4 @@ def test_avgpool2d() -> None:
 
 
 if __name__ == "__main__":
-    test_avgpool2d()
+    test_batchnorm2d()

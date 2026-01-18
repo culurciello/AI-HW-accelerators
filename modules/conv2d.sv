@@ -4,6 +4,8 @@ module conv2d #(
   parameter int IN_H = 1,
   parameter int IN_W = 1,
   parameter int K = 3,
+  parameter int STRIDE = 1,
+  parameter int PADDING = 0,
   parameter int WIDTH = 16,
   parameter int FRAC = 8,
   parameter string precision = "Q8.8",
@@ -11,10 +13,10 @@ module conv2d #(
   parameter string BIAS_FILE = ""
 ) (
   input  logic signed [IN_CH*IN_H*IN_W*WIDTH-1:0] in_vec,
-  output logic signed [OUT_CH*(IN_H-K+1)*(IN_W-K+1)*WIDTH-1:0] out_vec
+  output logic signed [OUT_CH*((IN_H+2*PADDING-K)/STRIDE+1)*((IN_W+2*PADDING-K)/STRIDE+1)*WIDTH-1:0] out_vec
 );
-  localparam int OUT_H = IN_H - K + 1;
-  localparam int OUT_W = IN_W - K + 1;
+  localparam int OUT_H = (IN_H + 2*PADDING - K) / STRIDE + 1;
+  localparam int OUT_W = (IN_W + 2*PADDING - K) / STRIDE + 1;
   localparam int ACC_WIDTH = WIDTH*2 + $clog2(IN_CH*K*K);
 
   logic signed [WIDTH-1:0] weights [0:OUT_CH*IN_CH*K*K-1];
@@ -27,8 +29,12 @@ module conv2d #(
   );
     int idx;
     begin
-      idx = ((ch * IN_H + h) * IN_W + w);
-      get_in = in_vec[idx*WIDTH +: WIDTH];
+      if (h < 0 || h >= IN_H || w < 0 || w >= IN_W) begin
+        get_in = '0;
+      end else begin
+        idx = ((ch * IN_H + h) * IN_W + w);
+        get_in = in_vec[idx*WIDTH +: WIDTH];
+      end
     end
   endfunction
 
@@ -93,7 +99,8 @@ module conv2d #(
           for (ic = 0; ic < IN_CH; ic = ic + 1) begin
             for (kh = 0; kh < K; kh = kh + 1) begin
               for (kw = 0; kw < K; kw = kw + 1) begin
-                prod = get_in(ic, oh + kh, ow + kw) * get_weight(oc, ic, kh, kw);
+                prod = get_in(ic, oh*STRIDE + kh - PADDING, ow*STRIDE + kw - PADDING)
+                       * get_weight(oc, ic, kh, kw);
                 prod_ext = {{(ACC_WIDTH-WIDTH*2){prod[WIDTH*2-1]}}, prod};
                 acc = acc + prod_ext;
               end

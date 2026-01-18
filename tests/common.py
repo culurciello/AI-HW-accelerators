@@ -57,6 +57,21 @@ def read_mem(path: Path, width: int = WIDTH) -> list[int]:
     return values
 
 
+def tanh_lut_q88(
+    x_q: torch.Tensor,
+    lut_size: int = 1024,
+    x_min_q: int = -(4 << FRAC),
+    x_max_q: int = (4 << FRAC),
+) -> torch.Tensor:
+    range_q = x_max_q - x_min_q
+    idx = ((x_q.to(torch.int32) - x_min_q) * (lut_size - 1)) // range_q
+    idx = torch.clamp(idx, 0, lut_size - 1).to(torch.int64)
+    xs = torch.linspace(x_min_q, x_max_q, lut_size, dtype=torch.float32) / SCALE
+    lut = q88_from_float_tensor(torch.tanh(xs)).to(torch.int16)
+    flat = lut[idx.view(-1)].view(x_q.shape)
+    return flat
+
+
 def run_verilator(
     tb_path: Path,
     sv_sources: list[Path],

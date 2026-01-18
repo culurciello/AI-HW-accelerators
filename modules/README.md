@@ -5,9 +5,12 @@ Reusable SystemVerilog blocks for fixed-point neural networks (Q8.8).
 ## Modules
 - `linear.sv`: fully-connected layer with optional bias (`WEIGHTS_FILE`, `BIAS_FILE`).
 - `relu.sv`: ReLU activation on packed vectors.
-- `conv2d.sv`: 2D convolution (NHWC packed as channel-major flat vector).
+- `conv2d.sv`: 2D convolution (channel-major flat vector: C,H,W).
 - `avgpool2d.sv`: average pooling (KxK, stride).
-- `tanh.sv`: tanh activation (simulation uses real math; can be swapped for LUT).
+- `maxpool2d.sv`: max pooling (KxK, stride, padding).
+- `batchnorm2d.sv`: per-channel batchnorm using precomputed scale/bias.
+- `add_vec.sv`: elementwise add for residual paths.
+- `tanh.sv`: tanh activation using a generated lookup table.
 
 ## Interfaces
 All modules use packed vectors of signed Q8.8 values:
