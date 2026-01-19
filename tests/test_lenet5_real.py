@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import os
 
 import torch
 import torch.nn.functional as F
@@ -10,10 +11,11 @@ from common import (
     FRAC,
     REPO_ROOT,
     WIDTH,
+    build_verilator,
     q88_from_float_tensor,
     read_mem,
     run_verilator,
-    tanh_lut_q88,
+    run_verilator_exe,
     write_mem,
 )
 
@@ -38,13 +40,27 @@ def conv2d_q88(x_q: torch.Tensor, w_q: torch.Tensor, b_q: torch.Tensor | None) -
 
 
 def avgpool2d_q88(x_q: torch.Tensor) -> torch.Tensor:
-    x_f = x_q.to(torch.float32) / SCALE
-    y_f = F.avg_pool2d(x_f, kernel_size=2, stride=2)
-    return q88_from_float_tensor(y_f)
+    denom = 4
+    n, ch, in_h, in_w = x_q.shape
+    out_h = in_h // 2
+    out_w = in_w // 2
+    out = torch.zeros((n, ch, out_h, out_w), dtype=torch.int16)
+    x_int = x_q.to(torch.int32)
+    for c in range(ch):
+        for oh in range(out_h):
+            for ow in range(out_w):
+                patch = x_int[0, c, oh * 2 : oh * 2 + 2, ow * 2 : ow * 2 + 2]
+                acc = int(patch.sum().item())
+                if acc < 0:
+                    acc = -((-acc + denom // 2) // denom)
+                else:
+                    acc = (acc + denom // 2) // denom
+                out[0, c, oh, ow] = acc
+    return out
 
 
-def tanh_q88(x_q: torch.Tensor) -> torch.Tensor:
-    return tanh_lut_q88(x_q)
+def relu_q88(x_q: torch.Tensor) -> torch.Tensor:
+    return torch.clamp(x_q, min=0)
 
 
 def linear_q88_with_bias(x_q: torch.Tensor, w_q: torch.Tensor, b_q: torch.Tensor) -> torch.Tensor:
@@ -157,13 +173,13 @@ def test_lenet5_real() -> None:
     out_b = q88_from_float_tensor(out_b_f)
     x_q = q88_from_float_tensor(x_f)
 
-    x_q = tanh_q88(conv2d_q88(x_q, c1_w, c1_b))
+    x_q = relu_q88(conv2d_q88(x_q, c1_w, c1_b))
     x_q = avgpool2d_q88(x_q)
-    x_q = tanh_q88(conv2d_q88(x_q, c3_w, c3_b))
+    x_q = relu_q88(conv2d_q88(x_q, c3_w, c3_b))
     x_q = avgpool2d_q88(x_q)
     x_q = x_q.view(1, -1)
-    x_q = tanh_q88(linear_q88_with_bias(x_q, c5_w, c5_b))
-    x_q = tanh_q88(linear_q88_with_bias(x_q, f6_w, f6_b))
+    x_q = relu_q88(linear_q88_with_bias(x_q, c5_w, c5_b))
+    x_q = relu_q88(linear_q88_with_bias(x_q, f6_w, f6_b))
     out_q = linear_q88_with_bias(x_q, out_w, out_b).squeeze(0)
 
     build_dir = REPO_ROOT / "tests" / "build" / "lenet5_real"
@@ -216,11 +232,17 @@ def test_lenet5_real() -> None:
     sv_sources = [
         REPO_ROOT / "modules" / "conv2d.sv",
         REPO_ROOT / "modules" / "avgpool2d.sv",
-        REPO_ROOT / "modules" / "tanh.sv",
+        REPO_ROOT / "modules" / "relu.sv",
         REPO_ROOT / "modules" / "linear.sv",
         sv_top,
     ]
-    run_verilator(tb_path, sv_sources)
+    threads = int(os.environ.get("VERILATOR_THREADS", "16"))
+    reuse = os.environ.get("VERILATOR_REUSE", "1") == "1"
+    build_dir = tb_path.parent / "obj_dir"
+    exe = build_dir / "Vtb"
+    if not (reuse and exe.exists()):
+        exe = build_verilator(tb_path, sv_sources, threads=threads, clean=not reuse)
+    run_verilator_exe(exe, tb_path.parent)
     hw_out = read_mem(output_mem)
     sw_out = out_q.tolist()
     sw_float = [val / (1 << FRAC) for val in sw_out]

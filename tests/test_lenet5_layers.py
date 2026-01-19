@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from importlib.util import module_from_spec, spec_from_file_location
+import os
 from pathlib import Path
 
 import torch
@@ -10,14 +11,16 @@ from common import (
     FRAC,
     REPO_ROOT,
     WIDTH,
+    build_verilator,
     q88_from_float_tensor,
     read_mem,
     run_verilator,
-    tanh_lut_q88,
+    run_verilator_exe,
     write_mem,
 )
 
 SCALE = 1 << FRAC
+THREADS = int(os.environ.get("VERILATOR_THREADS", "16"))
 
 
 def _load_module(path: Path, name: str):
@@ -67,6 +70,13 @@ def linear_q88_with_bias(x_q: torch.Tensor, w_q: torch.Tensor, b_q: torch.Tensor
 
 def _progress(idx: int, total: int, name: str) -> None:
     print(f"[{idx}/{total}] {name}", flush=True)
+
+
+def _dump_values(path: Path, values: list[int]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="ascii") as handle:
+        handle.write(" ".join(str(v) for v in values))
+        handle.write("\n")
 
 
 def _build_tb_conv2d(
@@ -191,7 +201,7 @@ endmodule
     tb_path.write_text(tb_text, encoding="ascii")
 
 
-def _build_tb_tanh(
+def _build_tb_relu(
     tb_path: Path,
     input_mem: Path,
     output_mem: Path,
@@ -226,10 +236,10 @@ module tb;
     $finish;
   end
 
-  tanh #(
+  relu #(
     .DIM(DIM),
     .WIDTH(WIDTH),
-    .FRAC(FRAC)
+    .precision("Q8.8")
   ) dut (
     .in_vec(in_vec),
     .out_vec(out_vec)
@@ -335,47 +345,89 @@ def test_lenet5_layers() -> None:
     total_layers = 11
     layer_idx = 1
 
-    def run_conv(name: str, in_q: torch.Tensor, w_q: torch.Tensor, b_q: torch.Tensor, in_ch: int, out_ch: int, in_h: int, in_w: int):
+    def run_conv(
+        name: str,
+        in_q: torch.Tensor,
+        w_q: torch.Tensor,
+        b_q: torch.Tensor,
+        in_ch: int,
+        out_ch: int,
+        in_h: int,
+        in_w: int,
+    ):
         nonlocal layer_idx
         _progress(layer_idx, total_layers, name)
         layer_idx += 1
         out_q = conv2d_q88(in_q, w_q, b_q)
+        out_h = in_h - 5 + 1
+        out_w = in_w - 5 + 1
+
         input_mem = build_dir / f"{name}_input.mem"
         weights_mem = build_dir / f"{name}_weights.mem"
         bias_mem = build_dir / f"{name}_bias.mem"
         output_mem = build_dir / f"{name}_output.mem"
         tb_path = build_dir / f"tb_{name}.sv"
         write_mem(input_mem, in_q.squeeze(0).flatten().tolist())
-        write_mem(weights_mem, w_q.flatten().tolist())
-        write_mem(bias_mem, b_q.flatten().tolist())
-        _build_tb_conv2d(tb_path, input_mem, weights_mem, bias_mem, output_mem, in_ch, out_ch, in_h, in_w, 5)
-        run_verilator(
+        _build_tb_conv2d(
+            tb_path,
+            input_mem,
+            weights_mem,
+            bias_mem,
+            output_mem,
+            in_ch,
+            1,
+            in_h,
+            in_w,
+            5,
+        )
+        exe = build_verilator(
             tb_path,
             [REPO_ROOT / "modules" / "conv2d.sv"],
+            threads=THREADS,
+            clean=True,
         )
-        hw_out = read_mem(output_mem)
-        sw_out = out_q.squeeze(0).flatten().tolist()
-        if hw_out != sw_out:
+
+        hw_full = torch.zeros((out_ch, out_h, out_w), dtype=torch.int16)
+        for oc in range(out_ch):
+            write_mem(weights_mem, w_q[oc : oc + 1].flatten().tolist())
+            write_mem(bias_mem, b_q[oc : oc + 1].flatten().tolist())
+            run_verilator_exe(exe, tb_path.parent)
+            hw_out = read_mem(output_mem)
+            hw_full[oc] = torch.tensor(hw_out, dtype=torch.int16).view(out_h, out_w)
+
+        sw_out = out_q.squeeze(0)
+        sw_vals = sw_out.flatten().tolist()
+        hw_vals = hw_full.flatten().tolist()
+        _dump_values(build_dir / f"{name}_sw.txt", sw_vals)
+        _dump_values(build_dir / f"{name}_hw.txt", hw_vals)
+        print(f"{name} SW (q) sample: {sw_vals[:10]}")
+        print(f"{name} HW (q) sample: {hw_vals[:10]}")
+        if hw_full.tolist() != sw_out.tolist():
             raise AssertionError(f"{name} mismatch")
         return out_q
 
-    def run_tanh(name: str, in_q: torch.Tensor):
+    def run_relu(name: str, in_q: torch.Tensor):
         nonlocal layer_idx
         _progress(layer_idx, total_layers, name)
         layer_idx += 1
-        out_q = tanh_lut_q88(in_q)
+        out_q = torch.clamp(in_q, min=0)
         dim = in_q.numel()
         input_mem = build_dir / f"{name}_input.mem"
         output_mem = build_dir / f"{name}_output.mem"
         tb_path = build_dir / f"tb_{name}.sv"
         write_mem(input_mem, in_q.view(-1).tolist())
-        _build_tb_tanh(tb_path, input_mem, output_mem, dim)
+        _build_tb_relu(tb_path, input_mem, output_mem, dim)
         run_verilator(
             tb_path,
-            [REPO_ROOT / "modules" / "tanh.sv"],
+            [REPO_ROOT / "modules" / "relu.sv"],
+            threads=THREADS,
         )
         hw_out = read_mem(output_mem)
         sw_out = out_q.view(-1).tolist()
+        _dump_values(build_dir / f"{name}_sw.txt", sw_out)
+        _dump_values(build_dir / f"{name}_hw.txt", hw_out)
+        print(f"{name} SW (q) sample: {sw_out[:10]}")
+        print(f"{name} HW (q) sample: {hw_out[:10]}")
         if hw_out != sw_out:
             raise AssertionError(f"{name} mismatch")
         return out_q
@@ -393,9 +445,14 @@ def test_lenet5_layers() -> None:
         run_verilator(
             tb_path,
             [REPO_ROOT / "modules" / "avgpool2d.sv"],
+            threads=THREADS,
         )
         hw_out = read_mem(output_mem)
         sw_out = out_q.squeeze(0).flatten().tolist()
+        _dump_values(build_dir / f"{name}_sw.txt", sw_out)
+        _dump_values(build_dir / f"{name}_hw.txt", hw_out)
+        print(f"{name} SW (q) sample: {sw_out[:10]}")
+        print(f"{name} HW (q) sample: {hw_out[:10]}")
         if hw_out != sw_out:
             raise AssertionError(f"{name} mismatch")
         return out_q
@@ -417,24 +474,29 @@ def test_lenet5_layers() -> None:
         run_verilator(
             tb_path,
             [REPO_ROOT / "modules" / "linear.sv"],
+            threads=THREADS,
         )
         hw_out = read_mem(output_mem)
         sw_out = out_q.squeeze(0).tolist()
+        _dump_values(build_dir / f"{name}_sw.txt", sw_out)
+        _dump_values(build_dir / f"{name}_hw.txt", hw_out)
+        print(f"{name} SW (q) sample: {sw_out[:10]}")
+        print(f"{name} HW (q) sample: {hw_out[:10]}")
         if hw_out != sw_out:
             raise AssertionError(f"{name} mismatch")
         return out_q
 
     x_q = run_conv("c1", x_q, c1_w, c1_b, 1, 6, 32, 32)
-    x_q = run_tanh("tanh1", x_q)
+    x_q = run_relu("relu1", x_q)
     x_q = run_avgpool("s2", x_q, 6, 28, 28)
     x_q = run_conv("c3", x_q, c3_w, c3_b, 6, 16, 14, 14)
-    x_q = run_tanh("tanh2", x_q)
+    x_q = run_relu("relu2", x_q)
     x_q = run_avgpool("s4", x_q, 16, 10, 10)
     x_q = x_q.view(1, -1)
     x_q = run_linear("c5", x_q, c5_w, c5_b)
-    x_q = run_tanh("tanh3", x_q)
+    x_q = run_relu("relu3", x_q)
     x_q = run_linear("f6", x_q, f6_w, f6_b)
-    x_q = run_tanh("tanh4", x_q)
+    x_q = run_relu("relu4", x_q)
     _ = run_linear("out", x_q, out_w, out_b)
 
     print("PASS")

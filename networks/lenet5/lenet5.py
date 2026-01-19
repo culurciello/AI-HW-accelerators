@@ -22,13 +22,13 @@ class LeNet5(nn.Module):
         self.output = nn.Linear(84, num_classes)
 
     def forward(self, x):
-        x = torch.tanh(self.c1(x)) # Original LeNet used Tanh
+        x = F.relu(self.c1(x))
         x = self.s2(x)
-        x = torch.tanh(self.c3(x))
+        x = F.relu(self.c3(x))
         x = self.s4(x)
         x = x.view(-1, 16 * 5 * 5) # Flatten
-        x = torch.tanh(self.c5(x))
-        x = torch.tanh(self.f6(x))
+        x = F.relu(self.c5(x))
+        x = F.relu(self.f6(x))
         x = self.output(x)
         return x
 

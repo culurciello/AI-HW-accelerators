@@ -63,6 +63,7 @@ module conv2d #(
   integer ow;
   integer kh;
   integer kw;
+  integer oi;
   logic signed [ACC_WIDTH-1:0] acc;
   logic signed [ACC_WIDTH-1:0] acc_round;
   logic signed [WIDTH*2-1:0] prod;
@@ -78,8 +79,8 @@ module conv2d #(
   localparam string BIAS_SRC = BIAS_FILE;
 
   initial begin
-    for (oc = 0; oc < OUT_CH; oc = oc + 1) begin
-      bias[oc] = '0;
+    for (oi = 0; oi < OUT_CH; oi = oi + 1) begin
+      bias[oi] = '0;
     end
     if (WEIGHTS_FILE != "") begin
       $readmemh(WEIGHTS_FILE, weights);
@@ -90,12 +91,19 @@ module conv2d #(
   end
 
   always_comb begin
-    out_vec = '0;
     rounding = ({{(ACC_WIDTH-1){1'b0}}, 1'b1} <<< (FRAC-1));
     for (oc = 0; oc < OUT_CH; oc = oc + 1) begin
       for (oh = 0; oh < OUT_H; oh = oh + 1) begin
         for (ow = 0; ow < OUT_W; ow = ow + 1) begin
           acc = '0;
+          acc_round = '0;
+          shifted = '0;
+          abs_acc = '0;
+          rounded_mag = '0;
+          out_elem = '0;
+          bias_ext = '0;
+          prod_ext = '0;
+          prod = '0;
           for (ic = 0; ic < IN_CH; ic = ic + 1) begin
             for (kh = 0; kh < K; kh = kh + 1) begin
               for (kw = 0; kw < K; kw = kw + 1) begin

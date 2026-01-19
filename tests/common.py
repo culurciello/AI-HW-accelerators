@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 from pathlib import Path
+import os
 
 import torch
 
@@ -66,20 +67,26 @@ def tanh_lut_q88(
     range_q = x_max_q - x_min_q
     idx = ((x_q.to(torch.int32) - x_min_q) * (lut_size - 1)) // range_q
     idx = torch.clamp(idx, 0, lut_size - 1).to(torch.int64)
-    xs = torch.linspace(x_min_q, x_max_q, lut_size, dtype=torch.float32) / SCALE
-    lut = q88_from_float_tensor(torch.tanh(xs)).to(torch.int16)
+    xs = torch.empty((lut_size,), dtype=torch.float64)
+    for i in range(lut_size):
+        signed_val = x_min_q + (i * range_q) // (lut_size - 1)
+        xs[i] = signed_val / SCALE
+    lut = q88_from_float_tensor(torch.tanh(xs.to(torch.float32))).to(torch.int16)
     flat = lut[idx.view(-1)].view(x_q.shape)
     return flat
 
 
-def run_verilator(
+def build_verilator(
     tb_path: Path,
     sv_sources: list[Path],
     top: str = "tb",
-    threads: int = 16,
-) -> None:
+    threads: int | None = None,
+    clean: bool = True,
+) -> Path:
+    if threads is None:
+        threads = int(os.environ.get("VERILATOR_THREADS", "16"))
     build_dir = tb_path.parent / "obj_dir"
-    if build_dir.exists():
+    if clean and build_dir.exists():
         shutil.rmtree(build_dir)
 
     cmd = [
@@ -87,7 +94,9 @@ def run_verilator(
         "--binary",
         "-Wall",
         "-Wno-fatal",
-        "--threads",
+        "-CFLAGS",
+        "-O3",
+        "--build-jobs",
         str(threads),
         "--top-module",
         top,
@@ -95,12 +104,17 @@ def run_verilator(
         str(build_dir),
         str(tb_path),
     ] + [str(src) for src in sv_sources]
+    if threads and threads > 1:
+        cmd[4:4] = ["--threads", str(threads)]
 
     subprocess.run(cmd, check=True, cwd=tb_path.parent)
-    exe = build_dir / f"V{top}"
+    return build_dir / f"V{top}"
+
+
+def run_verilator_exe(exe: Path, cwd: Path) -> None:
     result = subprocess.run(
         [str(exe)],
-        cwd=tb_path.parent,
+        cwd=cwd,
         capture_output=True,
         text=True,
     )
@@ -110,4 +124,13 @@ def run_verilator(
             f"stdout:\n{result.stdout}\n"
             f"stderr:\n{result.stderr}"
         )
-    return
+
+
+def run_verilator(
+    tb_path: Path,
+    sv_sources: list[Path],
+    top: str = "tb",
+    threads: int | None = None,
+) -> None:
+    exe = build_verilator(tb_path, sv_sources, top=top, threads=threads, clean=True)
+    run_verilator_exe(exe, tb_path.parent)

@@ -35,6 +35,7 @@ python tests/test_lenet5_real.py
 # ResNet-18 (pretrained weights may require download)
 python networks/resnet18/resnet18.py
 python tests/test_resnet18_real.py
+python tests/test_resnet18_layers.py
 ```
 
 Module-level tests:

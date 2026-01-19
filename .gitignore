@@ -1,0 +1,5 @@
+*.mem
+*.pyc
+/tests/build
+.DS_Store
+prompt.txt
