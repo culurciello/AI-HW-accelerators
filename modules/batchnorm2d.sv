@@ -40,6 +40,12 @@ module batchnorm2d #(
     get_bias = bias[ch];
   endfunction
 
+  function automatic logic get_bias_sign(
+    input int ch
+  );
+    get_bias_sign = bias[ch][WIDTH-1];
+  endfunction
+
   integer c;
   integer h;
   integer w;
@@ -79,7 +85,7 @@ module batchnorm2d #(
         for (w = 0; w < IN_W; w = w + 1) begin
           prod = get_in(c, h, w) * get_scale(c);
           prod_ext = {{(ACC_WIDTH-WIDTH*2){prod[WIDTH*2-1]}}, prod};
-          bias_ext = {{(ACC_WIDTH-WIDTH){get_bias(c)[WIDTH-1]}}, get_bias(c)};
+          bias_ext = {{(ACC_WIDTH-WIDTH){get_bias_sign(c)}}, get_bias(c)};
           acc = prod_ext + (bias_ext <<< FRAC);
           if (acc[ACC_WIDTH-1]) begin
             abs_acc = -acc;

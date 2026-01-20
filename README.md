@@ -5,6 +5,15 @@
 A frekishly funimplementation of neural networks building blocks and full networks in SystemVerilog. 
 The repo pairs PyTorch models with fixed-point (Q8.8) SV implementations and Verilator-based tests for modules and entire networks.
 
+## Status
+
+| network | status |
+| mlp1 | PASS |
+| lenet5 | PASS |
+| resnet18 | PASS |
+| yolov8n | TBD |
+
+
 ## Layout
 - `networks/`: PyTorch reference models and weight export helpers.
 - `modules/`: SV modules that mirror PyTorch layers (Q8.8).
@@ -26,7 +35,7 @@ Export weights and run tests:
 ```bash
 # MLP
 python networks/mlp/mlp.py
-python tests/test_mlp_c1_real.py
+python tests/test_mlp_c1_real.py # tests/test_mlp_c1_real.py uses the exact PyTorch model weights exported from networks/mlp/mlp.py.
 
 # LeNet-5
 python networks/lenet5/lenet5.py
@@ -36,6 +45,11 @@ python tests/test_lenet5_real.py
 python networks/resnet18/resnet18.py
 python tests/test_resnet18_real.py
 python tests/test_resnet18_layers.py
+```
+
+Fast ResNet-18 layer test:
+```bash
+RESNET18_FAST=1 RESNET18_INPUT=32 VERILATOR_THREADS=16 python tests/test_resnet18_layers.py
 ```
 
 Module-level tests:

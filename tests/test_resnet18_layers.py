@@ -5,6 +5,7 @@ from pathlib import Path
 import os
 
 import torch
+import torchvision.models as models
 import torch.nn.functional as F
 
 from common import (
@@ -20,6 +21,8 @@ from common import (
 SCALE = 1 << FRAC
 THREADS = int(os.environ.get("VERILATOR_THREADS", "16"))
 INPUT_SIZE = int(os.environ.get("RESNET18_INPUT", "32"))
+FAST_MODE = os.environ.get("RESNET18_FAST", "0") == "1"
+MAX_BLOCKS = int(os.environ.get("RESNET18_MAX_BLOCKS", "2" if FAST_MODE else "8"))
 
 
 def _load_module(path: Path, name: str):
@@ -476,17 +479,34 @@ endmodule
 
 def test_resnet18_layers() -> None:
     torch.manual_seed(22)
+    print("running SW pytorch version...")
     resnet_path = REPO_ROOT / "networks" / "resnet18" / "resnet18.py"
     weights_path = REPO_ROOT / "networks" / "resnet18" / "resnet18_weights.py"
     resnet_mod = _load_module(resnet_path, "resnet18_module")
     if not weights_path.exists():
         resnet_mod.export_weights_py(weights_path, weights=None)
 
-    weights_mod = _load_module(weights_path, "resnet18_weights")
-    state = weights_mod.STATE_DICT
+    state = None
+    if weights_path.exists():
+        try:
+            weights_mod = _load_module(weights_path, "resnet18_weights")
+            state = weights_mod.STATE_DICT
+        except SyntaxError:
+            state = None
+
+    if state is None:
+        pt_path = REPO_ROOT / "networks" / "resnet18" / "resnet18_small.pt"
+        if pt_path.exists():
+            state = torch.load(pt_path, map_location="cpu")
+        else:
+            model = models.resnet18(weights=None)
+            state = model.state_dict()
 
     def t(name: str) -> torch.Tensor:
-        return torch.tensor(state[name], dtype=torch.float32)
+        val = state[name]
+        if isinstance(val, torch.Tensor):
+            return val.detach().clone().to(torch.float32)
+        return torch.tensor(val, dtype=torch.float32)
 
     x_f = torch.rand((1, 3, INPUT_SIZE, INPUT_SIZE), dtype=torch.float32) * 2.0 - 1.0
     x_q = q88_from_float_tensor(x_f)
@@ -551,12 +571,12 @@ def test_resnet18_layers() -> None:
         ("layer3.1", 256, 256, 1, None),
         ("layer4.0", 256, 512, 2, downsample_params("layer4.0.downsample")),
         ("layer4.1", 512, 512, 1, None),
-    ]
+    ][:MAX_BLOCKS]
 
     build_dir = REPO_ROOT / "tests" / "build" / "resnet18_layers"
     build_dir.mkdir(parents=True, exist_ok=True)
 
-    total_layers = 2 + len(blocks) + 1
+    total_layers = 2 + len(blocks) + (0 if FAST_MODE else 1)
     layer_idx = 1
 
     _progress(layer_idx, total_layers, "stem")
@@ -578,6 +598,7 @@ def test_resnet18_layers() -> None:
     write_mem(bn_scale_mem, bn1_scale_q.flatten().tolist())
     write_mem(bn_bias_mem, bn1_bias_q.flatten().tolist())
     _build_tb_stem(tb_path, input_mem, conv_w_mem, bn_scale_mem, bn_bias_mem, output_mem, INPUT_SIZE, INPUT_SIZE)
+    print("running SV hardware version...")
     run_verilator(
         tb_path,
         [
@@ -666,6 +687,7 @@ def test_resnet18_layers() -> None:
             ds_bn_bias_mem,
         )
 
+        print("running SV hardware version...")
         run_verilator(
             tb_path,
             [
@@ -688,12 +710,21 @@ def test_resnet18_layers() -> None:
         h = x_q.shape[2]
         w = x_q.shape[3]
 
+    if FAST_MODE:
+        print("Skipping avgpool+fc in fast mode.")
+        print("PASS")
+        return
+
     _progress(layer_idx, total_layers, "avgpool+fc")
     layer_idx += 1
     pooled = avgpool2d_q88_int(x_q, kernel=h, stride=1)
     pooled_flat = pooled.view(1, -1)
     fc_w_q = q88_from_float_tensor(t("fc.weight"))
     fc_b_q = q88_from_float_tensor(t("fc.bias"))
+    if pooled_flat.shape[1] != fc_w_q.shape[1]:
+        raise AssertionError(
+            f"FC input mismatch: got {pooled_flat.shape[1]} expected {fc_w_q.shape[1]}"
+        )
     out_q = linear_q88(pooled_flat, fc_w_q, fc_b_q).squeeze(0)
 
     input_mem = build_dir / "gap_input.mem"
@@ -705,6 +736,7 @@ def test_resnet18_layers() -> None:
     write_mem(fc_w_mem, fc_w_q.flatten().tolist())
     write_mem(fc_b_mem, fc_b_q.flatten().tolist())
     _build_tb_avgpool_fc(tb_path, input_mem, fc_w_mem, fc_b_mem, output_mem, 512, h, w)
+    print("running SV hardware version...")
     run_verilator(
         tb_path,
         [

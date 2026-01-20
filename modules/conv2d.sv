@@ -57,6 +57,12 @@ module conv2d #(
     get_bias = bias[out_ch];
   endfunction
 
+  function automatic logic get_bias_sign(
+    input int out_ch
+  );
+    get_bias_sign = bias[out_ch][WIDTH-1];
+  endfunction
+
   integer oc;
   integer ic;
   integer oh;
@@ -114,7 +120,7 @@ module conv2d #(
               end
             end
           end
-          bias_ext = {{(ACC_WIDTH-WIDTH){get_bias(oc)[WIDTH-1]}}, get_bias(oc)};
+          bias_ext = {{(ACC_WIDTH-WIDTH){get_bias_sign(oc)}}, get_bias(oc)};
           acc = acc + (bias_ext <<< FRAC);
           if (acc[ACC_WIDTH-1]) begin
             abs_acc = -acc;

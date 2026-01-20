@@ -306,6 +306,7 @@ endmodule
 
 def test_lenet5_layers() -> None:
     torch.manual_seed(21)
+    print("running SW pytorch version...")
     lenet_path = REPO_ROOT / "networks" / "lenet5" / "lenet5.py"
     weights_path = REPO_ROOT / "networks" / "lenet5" / "lenet5_weights.py"
     lenet_mod = _load_module(lenet_path, "lenet5_module")
@@ -380,6 +381,7 @@ def test_lenet5_layers() -> None:
             in_w,
             5,
         )
+        print("running SV hardware version...")
         exe = build_verilator(
             tb_path,
             [REPO_ROOT / "modules" / "conv2d.sv"],
@@ -417,6 +419,7 @@ def test_lenet5_layers() -> None:
         tb_path = build_dir / f"tb_{name}.sv"
         write_mem(input_mem, in_q.view(-1).tolist())
         _build_tb_relu(tb_path, input_mem, output_mem, dim)
+        print("running SV hardware version...")
         run_verilator(
             tb_path,
             [REPO_ROOT / "modules" / "relu.sv"],
@@ -442,6 +445,7 @@ def test_lenet5_layers() -> None:
         tb_path = build_dir / f"tb_{name}.sv"
         write_mem(input_mem, in_q.squeeze(0).flatten().tolist())
         _build_tb_avgpool(tb_path, input_mem, output_mem, ch, in_h, in_w)
+        print("running SV hardware version...")
         run_verilator(
             tb_path,
             [REPO_ROOT / "modules" / "avgpool2d.sv"],
@@ -471,6 +475,7 @@ def test_lenet5_layers() -> None:
         write_mem(weights_mem, w_q.flatten().tolist())
         write_mem(bias_mem, b_q.flatten().tolist())
         _build_tb_linear(tb_path, input_mem, weights_mem, bias_mem, output_mem, w_q.shape[1], w_q.shape[0])
+        print("running SV hardware version...")
         run_verilator(
             tb_path,
             [REPO_ROOT / "modules" / "linear.sv"],

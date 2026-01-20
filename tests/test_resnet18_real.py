@@ -2,17 +2,21 @@ from __future__ import annotations
 
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import os
 
 import torch
 import torch.nn.functional as F
+import torchvision.models as models
 
 from common import (
     FRAC,
     REPO_ROOT,
     WIDTH,
+    build_verilator,
     q88_from_float_tensor,
     read_mem,
     run_verilator,
+    run_verilator_exe,
     write_mem,
 )
 
@@ -117,6 +121,7 @@ def _write_bn_files(
 
 
 def test_resnet18_real() -> None:
+    print("running SW pytorch version...")
     torch.manual_seed(16)
     resnet_path = REPO_ROOT / "networks" / "resnet18" / "resnet18.py"
     weights_path = REPO_ROOT / "networks" / "resnet18" / "resnet18_weights.py"
@@ -124,8 +129,21 @@ def test_resnet18_real() -> None:
     if not weights_path.exists():
         resnet_mod.export_weights_py(weights_path, weights=None)
 
-    weights_mod = _load_module(weights_path, "resnet18_weights")
-    state = weights_mod.STATE_DICT
+    state = None
+    if weights_path.exists():
+        try:
+            weights_mod = _load_module(weights_path, "resnet18_weights")
+            state = weights_mod.STATE_DICT
+        except SyntaxError:
+            state = None
+
+    if state is None:
+        pt_path = REPO_ROOT / "networks" / "resnet18" / "resnet18_small.pt"
+        if pt_path.exists():
+            state = torch.load(pt_path, map_location="cpu")
+        else:
+            model = models.resnet18(weights=None)
+            state = model.state_dict()
 
     def t(name: str) -> torch.Tensor:
         return torch.tensor(state[name], dtype=torch.float32)
@@ -436,7 +454,15 @@ endmodule
         REPO_ROOT / "modules" / "linear.sv",
         REPO_ROOT / "models" / "resnet18.sv",
     ]
-    run_verilator(tb_path, sv_sources)
+    threads = int(os.environ.get("VERILATOR_THREADS", "16"))
+    reuse = os.environ.get("VERILATOR_REUSE", "1") == "1"
+    build_dir = tb_path.parent / "obj_dir"
+    exe = build_dir / "Vtb"
+    if not (reuse and exe.exists()):
+        print("running SV hardware version...")
+        exe = build_verilator(tb_path, sv_sources, threads=threads, clean=not reuse)
+    print("running SV hardware version...")
+    run_verilator_exe(exe, tb_path.parent)
     hw_out = read_mem(output_mem)
     sw_out = out_q.tolist()
     sw_float = [val / SCALE for val in sw_out]

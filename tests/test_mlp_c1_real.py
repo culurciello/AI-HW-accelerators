@@ -1,3 +1,5 @@
+# tests/test_mlp_c1_real.py uses the exact PyTorch model weights exported from networks/mlp/mlp.py.
+
 from __future__ import annotations
 
 from importlib.util import module_from_spec, spec_from_file_location

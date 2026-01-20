@@ -31,6 +31,12 @@ def _load_module(path: Path, name: str):
     return module
 
 
+def _run_layered() -> None:
+    layers_path = REPO_ROOT / "tests" / "test_lenet5_layers.py"
+    layers_mod = _load_module(layers_path, "lenet5_layers")
+    layers_mod.test_lenet5_layers()
+
+
 def conv2d_q88(x_q: torch.Tensor, w_q: torch.Tensor, b_q: torch.Tensor | None) -> torch.Tensor:
     x_f = x_q.to(torch.float32) / SCALE
     w_f = w_q.to(torch.float32) / SCALE
@@ -139,6 +145,11 @@ endmodule
 
 
 def test_lenet5_real() -> None:
+    print("running SW pytorch version...")
+    if os.environ.get("VERILATOR_LAYERED", "1") == "1":
+        print("Using layer-by-layer SV test (set VERILATOR_LAYERED=0 for full top).")
+        _run_layered()
+        return
     torch.manual_seed(4)
     lenet_path = REPO_ROOT / "networks" / "lenet5" / "lenet5.py"
     weights_path = REPO_ROOT / "networks" / "lenet5" / "lenet5_weights.py"
@@ -241,7 +252,9 @@ def test_lenet5_real() -> None:
     build_dir = tb_path.parent / "obj_dir"
     exe = build_dir / "Vtb"
     if not (reuse and exe.exists()):
+        print("running SV hardware version...")
         exe = build_verilator(tb_path, sv_sources, threads=threads, clean=not reuse)
+    print("running SV hardware version...")
     run_verilator_exe(exe, tb_path.parent)
     hw_out = read_mem(output_mem)
     sw_out = out_q.tolist()

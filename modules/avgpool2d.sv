@@ -28,6 +28,18 @@ module avgpool2d #(
     end
   endfunction
 
+  function automatic logic get_in_sign(
+    input int ch,
+    input int h,
+    input int w
+  );
+    int idx;
+    begin
+      idx = ((ch * IN_H + h) * IN_W + w);
+      get_in_sign = in_vec[idx*WIDTH + WIDTH-1];
+    end
+  endfunction
+
   integer c;
   integer oh;
   integer ow;
@@ -52,7 +64,7 @@ module avgpool2d #(
           acc = '0;
           for (kh = 0; kh < K; kh = kh + 1) begin
             for (kw = 0; kw < K; kw = kw + 1) begin
-              acc = acc + {{(ACC_WIDTH-WIDTH){get_in(c, oh*STRIDE + kh, ow*STRIDE + kw)[WIDTH-1]}}, get_in(c, oh*STRIDE + kh, ow*STRIDE + kw)};
+              acc = acc + {{(ACC_WIDTH-WIDTH){get_in_sign(c, oh*STRIDE + kh, ow*STRIDE + kw)}}, get_in(c, oh*STRIDE + kh, ow*STRIDE + kw)};
             end
           end
           if (acc[ACC_WIDTH-1]) begin

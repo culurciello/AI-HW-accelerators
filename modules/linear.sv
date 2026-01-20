@@ -35,6 +35,12 @@ module linear #(
     get_bias = bias[out_idx];
   endfunction
 
+  function automatic logic get_bias_sign(
+    input int out_idx
+  );
+    get_bias_sign = bias[out_idx][WIDTH-1];
+  endfunction
+
   integer o;
   integer i;
   logic signed [ACC_WIDTH-1:0] acc;
@@ -73,7 +79,7 @@ module linear #(
         prod_ext = {{(ACC_WIDTH-WIDTH*2){prod[WIDTH*2-1]}}, prod};
         acc = acc + prod_ext;
       end
-      bias_ext = {{(ACC_WIDTH-WIDTH){get_bias(o)[WIDTH-1]}}, get_bias(o)};
+      bias_ext = {{(ACC_WIDTH-WIDTH){get_bias_sign(o)}}, get_bias(o)};
       acc = acc + (bias_ext <<< FRAC);
       if (acc[ACC_WIDTH-1]) begin
         abs_acc = -acc;

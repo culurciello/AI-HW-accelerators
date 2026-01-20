@@ -1,3 +1,5 @@
+# tests/test_mlp_c1.py uses randomly generated Q8.8 weights/inputs each run.
+
 from __future__ import annotations
 
 from pathlib import Path
