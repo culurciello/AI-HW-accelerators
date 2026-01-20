@@ -28,6 +28,7 @@ The repo pairs PyTorch models with fixed-point (Q8.8) SV implementations and Ver
 - Python 3.10+
 - PyTorch
 - Verilator (5.x recommended)
+- Ultralytics (for YOLOv8n tests)
 
 ## Quick start
 Export weights and run tests:
@@ -35,7 +36,7 @@ Export weights and run tests:
 ```bash
 # MLP
 python networks/mlp/mlp.py
-python tests/test_mlp_c1_real.py # tests/test_mlp_c1_real.py uses the exact PyTorch model weights exported from networks/mlp/mlp.py.
+python tests/test_mlp_c1_real.py
 
 # LeNet-5
 python networks/lenet5/lenet5.py
@@ -47,10 +48,24 @@ python tests/test_resnet18_real.py
 python tests/test_resnet18_layers.py
 ```
 
+Notes:
+- Tests prefer loading `.pt` state_dicts. The optional `*_weights.py` files are no longer required.
+- To export `*_weights.py`, set `EXPORT_WEIGHTS_PY=1` when running the network scripts.
+
 Fast ResNet-18 layer test:
 ```bash
 RESNET18_FAST=1 RESNET18_INPUT=32 VERILATOR_THREADS=16 python tests/test_resnet18_layers.py
 ```
+
+# YOLOv8n (requires ultralytics)
+```bash
+python tests/test_yolov8n_layers.py
+python tests/test_yolov8n_real.py
+```
+Notes:
+- Outputs are raw `reg+cls` feature maps per scale (pre-DFL, no decode).
+- For faster runs: `YOLOV8N_FAST=1 YOLOV8N_INPUT=64 VERILATOR_THREADS=16 python tests/test_yolov8n_layers.py`
+- The same env vars apply to `tests/test_yolov8n_real.py`.
 
 Module-level tests:
 

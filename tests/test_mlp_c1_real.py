@@ -86,16 +86,18 @@ def test_mlp_c1_real() -> None:
     out_dim = 2
 
     mlp_path = REPO_ROOT / "networks" / "mlp" / "mlp.py"
-    weights_path = REPO_ROOT / "networks" / "mlp" / "mlp_weights.py"
+    pt_path = REPO_ROOT / "networks" / "mlp" / "mlp_c1.pt"
     mlp_mod = _load_module(mlp_path, "mlp_module")
-    if not weights_path.exists():
-        mlp_mod.export_weights_py(weights_path, seed=0)
-
-    weights_mod = _load_module(weights_path, "mlp_weights")
-
-    l1_w_f = torch.tensor(weights_mod.LAYER1_W, dtype=torch.float32)
-    l2_w_f = torch.tensor(weights_mod.LAYER2_W, dtype=torch.float32)
-    l3_w_f = torch.tensor(weights_mod.LAYER3_W, dtype=torch.float32)
+    if pt_path.exists():
+        state = torch.load(pt_path, map_location="cpu")
+        model = mlp_mod.mlp_c1()
+        model.load_state_dict(state)
+    else:
+        torch.manual_seed(0)
+        model = mlp_mod.mlp_c1()
+    l1_w_f = model.layer1.weight.detach().to(torch.float32)
+    l2_w_f = model.layer2.weight.detach().to(torch.float32)
+    l3_w_f = model.layer3.weight.detach().to(torch.float32)
     x_f = torch.rand((1, in_dim), dtype=torch.float32) * 2.0 - 1.0
 
     l1_w = q88_from_float_tensor(l1_w_f)

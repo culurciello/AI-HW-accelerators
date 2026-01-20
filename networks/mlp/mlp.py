@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 from pathlib import Path
@@ -58,7 +59,8 @@ if __name__ == "__main__":
 
     print(f"Model saved successfully to {PATH}")
 
-    export_weights_py(Path(__file__).with_name("mlp_weights.py"), seed=0)
+    if os.environ.get("EXPORT_WEIGHTS_PY", "0") == "1":
+        export_weights_py(Path(__file__).with_name("mlp_weights.py"), seed=0)
 
 
 # # reload later:

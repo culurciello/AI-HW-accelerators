@@ -130,7 +130,10 @@ def test_resnet18_real() -> None:
         resnet_mod.export_weights_py(weights_path, weights=None)
 
     state = None
-    if weights_path.exists():
+    pt_path = REPO_ROOT / "networks" / "resnet18" / "resnet18_small.pt"
+    if pt_path.exists():
+        state = torch.load(pt_path, map_location="cpu")
+    elif weights_path.exists():
         try:
             weights_mod = _load_module(weights_path, "resnet18_weights")
             state = weights_mod.STATE_DICT
@@ -138,12 +141,8 @@ def test_resnet18_real() -> None:
             state = None
 
     if state is None:
-        pt_path = REPO_ROOT / "networks" / "resnet18" / "resnet18_small.pt"
-        if pt_path.exists():
-            state = torch.load(pt_path, map_location="cpu")
-        else:
-            model = models.resnet18(weights=None)
-            state = model.state_dict()
+        model = models.resnet18(weights=None)
+        state = model.state_dict()
 
     def t(name: str) -> torch.Tensor:
         return torch.tensor(state[name], dtype=torch.float32)

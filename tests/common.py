@@ -76,6 +76,36 @@ def tanh_lut_q88(
     return flat
 
 
+def sigmoid_lut_q88(
+    x_q: torch.Tensor,
+    lut_size: int = 1024,
+    x_min_q: int = -(8 << FRAC),
+    x_max_q: int = (8 << FRAC),
+) -> torch.Tensor:
+    range_q = x_max_q - x_min_q
+    idx = ((x_q.to(torch.int32) - x_min_q) * (lut_size - 1)) // range_q
+    idx = torch.clamp(idx, 0, lut_size - 1).to(torch.int64)
+    xs = torch.empty((lut_size,), dtype=torch.float64)
+    for i in range(lut_size):
+        signed_val = x_min_q + (i * range_q) // (lut_size - 1)
+        xs[i] = signed_val / SCALE
+    sig = 1.0 / (1.0 + torch.exp(-xs))
+    lut = q88_from_float_tensor(sig.to(torch.float32)).to(torch.int16)
+    return lut[idx.view(-1)].view(x_q.shape)
+
+
+def silu_q88(x_q: torch.Tensor) -> torch.Tensor:
+    sig = sigmoid_lut_q88(x_q)
+    prod = x_q.to(torch.int32) * sig.to(torch.int32)
+    rounding = 1 << (FRAC - 1)
+    out = torch.where(
+        prod >= 0,
+        (prod + rounding) >> FRAC,
+        -(((-prod) + rounding) >> FRAC),
+    )
+    return out.to(torch.int16)
+
+
 def build_verilator(
     tb_path: Path,
     sv_sources: list[Path],

@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -64,4 +65,5 @@ if __name__ == "__main__":
     torch.save(model.state_dict(), PATH)
 
     print(f"LeNet-5 model structure created and saved to {PATH}")
-    export_weights_py(Path(__file__).with_name("lenet5_weights.py"), seed=0, num_classes=10)
+    if os.environ.get("EXPORT_WEIGHTS_PY", "0") == "1":
+        export_weights_py(Path(__file__).with_name("lenet5_weights.py"), seed=0, num_classes=10)

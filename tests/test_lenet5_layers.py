@@ -308,23 +308,26 @@ def test_lenet5_layers() -> None:
     torch.manual_seed(21)
     print("running SW pytorch version...")
     lenet_path = REPO_ROOT / "networks" / "lenet5" / "lenet5.py"
-    weights_path = REPO_ROOT / "networks" / "lenet5" / "lenet5_weights.py"
+    pt_path = REPO_ROOT / "networks" / "lenet5" / "lenet5_model.pt"
     lenet_mod = _load_module(lenet_path, "lenet5_module")
-    if not weights_path.exists():
-        lenet_mod.export_weights_py(weights_path, seed=0, num_classes=10)
+    if pt_path.exists():
+        state = torch.load(pt_path, map_location="cpu")
+        model = lenet_mod.LeNet5(num_classes=10)
+        model.load_state_dict(state)
+    else:
+        torch.manual_seed(0)
+        model = lenet_mod.LeNet5(num_classes=10)
 
-    weights_mod = _load_module(weights_path, "lenet5_weights")
-
-    c1_w_f = torch.tensor(weights_mod.C1_W, dtype=torch.float32)
-    c1_b_f = torch.tensor(weights_mod.C1_B, dtype=torch.float32)
-    c3_w_f = torch.tensor(weights_mod.C3_W, dtype=torch.float32)
-    c3_b_f = torch.tensor(weights_mod.C3_B, dtype=torch.float32)
-    c5_w_f = torch.tensor(weights_mod.C5_W, dtype=torch.float32)
-    c5_b_f = torch.tensor(weights_mod.C5_B, dtype=torch.float32)
-    f6_w_f = torch.tensor(weights_mod.F6_W, dtype=torch.float32)
-    f6_b_f = torch.tensor(weights_mod.F6_B, dtype=torch.float32)
-    out_w_f = torch.tensor(weights_mod.OUT_W, dtype=torch.float32)
-    out_b_f = torch.tensor(weights_mod.OUT_B, dtype=torch.float32)
+    c1_w_f = model.c1.weight.detach().to(torch.float32)
+    c1_b_f = model.c1.bias.detach().to(torch.float32)
+    c3_w_f = model.c3.weight.detach().to(torch.float32)
+    c3_b_f = model.c3.bias.detach().to(torch.float32)
+    c5_w_f = model.c5.weight.detach().to(torch.float32)
+    c5_b_f = model.c5.bias.detach().to(torch.float32)
+    f6_w_f = model.f6.weight.detach().to(torch.float32)
+    f6_b_f = model.f6.bias.detach().to(torch.float32)
+    out_w_f = model.output.weight.detach().to(torch.float32)
+    out_b_f = model.output.bias.detach().to(torch.float32)
 
     c1_w = q88_from_float_tensor(c1_w_f)
     c1_b = q88_from_float_tensor(c1_b_f)
