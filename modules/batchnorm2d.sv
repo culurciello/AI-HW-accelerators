@@ -78,7 +78,6 @@ module batchnorm2d #(
   end
 
   always_comb begin
-    out_vec = '0;
     rounding = ({{(ACC_WIDTH-1){1'b0}}, 1'b1} <<< (FRAC-1));
     for (c = 0; c < CH; c = c + 1) begin
       for (h = 0; h < IN_H; h = h + 1) begin
