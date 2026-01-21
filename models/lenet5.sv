@@ -26,15 +26,15 @@ module lenet5 #(
   localparam int S4_OUT_W = 5;
 
   logic signed [6*C1_OUT_H*C1_OUT_W*WIDTH-1:0] c1_out;
-  logic signed [6*C1_OUT_H*C1_OUT_W*WIDTH-1:0] c1_tanh;
+  logic signed [6*C1_OUT_H*C1_OUT_W*WIDTH-1:0] c1_relu;
   logic signed [6*S2_OUT_H*S2_OUT_W*WIDTH-1:0] s2_out;
   logic signed [16*C3_OUT_H*C3_OUT_W*WIDTH-1:0] c3_out;
-  logic signed [16*C3_OUT_H*C3_OUT_W*WIDTH-1:0] c3_tanh;
+  logic signed [16*C3_OUT_H*C3_OUT_W*WIDTH-1:0] c3_relu;
   logic signed [16*S4_OUT_H*S4_OUT_W*WIDTH-1:0] s4_out;
   logic signed [120*WIDTH-1:0] c5_out;
-  logic signed [120*WIDTH-1:0] c5_tanh;
+  logic signed [120*WIDTH-1:0] c5_relu;
   logic signed [84*WIDTH-1:0] f6_out;
-  logic signed [84*WIDTH-1:0] f6_tanh;
+  logic signed [84*WIDTH-1:0] f6_relu;
 
   conv2d #(
     .IN_CH(1),
@@ -52,14 +52,13 @@ module lenet5 #(
     .out_vec(c1_out)
   );
 
-  tanh #(
+  relu #(
     .DIM(6*C1_OUT_H*C1_OUT_W),
     .WIDTH(WIDTH),
-    .FRAC(FRAC),
     .precision(precision)
-  ) tanh1 (
+  ) relu1 (
     .in_vec(c1_out),
-    .out_vec(c1_tanh)
+    .out_vec(c1_relu)
   );
 
   avgpool2d #(
@@ -71,7 +70,7 @@ module lenet5 #(
     .WIDTH(WIDTH),
     .precision(precision)
   ) s2 (
-    .in_vec(c1_tanh),
+    .in_vec(c1_relu),
     .out_vec(s2_out)
   );
 
@@ -91,14 +90,13 @@ module lenet5 #(
     .out_vec(c3_out)
   );
 
-  tanh #(
+  relu #(
     .DIM(16*C3_OUT_H*C3_OUT_W),
     .WIDTH(WIDTH),
-    .FRAC(FRAC),
     .precision(precision)
-  ) tanh2 (
+  ) relu2 (
     .in_vec(c3_out),
-    .out_vec(c3_tanh)
+    .out_vec(c3_relu)
   );
 
   avgpool2d #(
@@ -110,7 +108,7 @@ module lenet5 #(
     .WIDTH(WIDTH),
     .precision(precision)
   ) s4 (
-    .in_vec(c3_tanh),
+    .in_vec(c3_relu),
     .out_vec(s4_out)
   );
 
@@ -127,14 +125,13 @@ module lenet5 #(
     .out_vec(c5_out)
   );
 
-  tanh #(
+  relu #(
     .DIM(120),
     .WIDTH(WIDTH),
-    .FRAC(FRAC),
     .precision(precision)
-  ) tanh3 (
+  ) relu3 (
     .in_vec(c5_out),
-    .out_vec(c5_tanh)
+    .out_vec(c5_relu)
   );
 
   linear #(
@@ -146,18 +143,17 @@ module lenet5 #(
     .WEIGHTS_FILE(F6_WEIGHTS_FILE),
     .BIAS_FILE(F6_BIAS_FILE)
   ) f6 (
-    .in_vec(c5_tanh),
+    .in_vec(c5_relu),
     .out_vec(f6_out)
   );
 
-  tanh #(
+  relu #(
     .DIM(84),
     .WIDTH(WIDTH),
-    .FRAC(FRAC),
     .precision(precision)
-  ) tanh4 (
+  ) relu4 (
     .in_vec(f6_out),
-    .out_vec(f6_tanh)
+    .out_vec(f6_relu)
   );
 
   linear #(
@@ -169,7 +165,7 @@ module lenet5 #(
     .WEIGHTS_FILE(OUT_WEIGHTS_FILE),
     .BIAS_FILE(OUT_BIAS_FILE)
   ) out_layer (
-    .in_vec(f6_tanh),
+    .in_vec(f6_relu),
     .out_vec(out_vec)
   );
 endmodule
