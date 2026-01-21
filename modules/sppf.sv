@@ -85,7 +85,6 @@ module sppf #(
   );
 
   always_comb begin
-    cat_vec = '0;
     cat_vec[0 +: MID_CH*IN_H*IN_W*WIDTH] = cv1_out;
     cat_vec[MID_CH*IN_H*IN_W*WIDTH +: MID_CH*IN_H*IN_W*WIDTH] = y1;
     cat_vec[2*MID_CH*IN_H*IN_W*WIDTH +: MID_CH*IN_H*IN_W*WIDTH] = y2;

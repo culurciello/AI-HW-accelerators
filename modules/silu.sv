@@ -54,7 +54,6 @@ module silu #(
   end
 
   always_comb begin
-    out_vec = '0;
     rounding = ({{(ACC_WIDTH-1){1'b0}}, 1'b1} <<< (FRAC-1));
     for (j = 0; j < DIM; j = j + 1) begin
       x_in = $signed(in_vec[j*WIDTH +: WIDTH]);

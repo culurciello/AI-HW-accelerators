@@ -16,7 +16,6 @@ module concat2d #(
   localparam string PRECISION = precision;
 
   always_comb begin
-    out_vec = '0;
     out_vec[0 +: A_SIZE] = a_vec;
     out_vec[A_SIZE +: B_SIZE] = b_vec;
   end

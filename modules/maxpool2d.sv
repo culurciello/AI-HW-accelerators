@@ -42,7 +42,6 @@ module maxpool2d #(
   localparam string PRECISION = precision;
 
   always_comb begin
-    out_vec = '0;
     for (c = 0; c < CH; c = c + 1) begin
       for (oh = 0; oh < OUT_H; oh = oh + 1) begin
         for (ow = 0; ow < OUT_W; ow = ow + 1) begin

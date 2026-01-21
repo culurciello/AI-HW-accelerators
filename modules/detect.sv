@@ -128,7 +128,6 @@ module detect #(
   ) s1_c2 (.in_vec(c1_1), .out_vec(c1_out));
 
   always_comb begin
-    o1 = '0;
     o1[0 +: REG_CH*IN_H1*IN_W1*WIDTH] = r1_out;
     o1[REG_CH*IN_H1*IN_W1*WIDTH +: CLS_CH*IN_H1*IN_W1*WIDTH] = c1_out;
   end
@@ -168,7 +167,6 @@ module detect #(
   ) s2_c2 (.in_vec(c2_1), .out_vec(c2_out));
 
   always_comb begin
-    o2 = '0;
     o2[0 +: REG_CH*IN_H2*IN_W2*WIDTH] = r2_out;
     o2[REG_CH*IN_H2*IN_W2*WIDTH +: CLS_CH*IN_H2*IN_W2*WIDTH] = c2_out;
   end
@@ -208,13 +206,11 @@ module detect #(
   ) s3_c2 (.in_vec(c3_1), .out_vec(c3_out));
 
   always_comb begin
-    o3 = '0;
     o3[0 +: REG_CH*IN_H3*IN_W3*WIDTH] = r3_out;
     o3[REG_CH*IN_H3*IN_W3*WIDTH +: CLS_CH*IN_H3*IN_W3*WIDTH] = c3_out;
   end
 
   always_comb begin
-    out_vec = '0;
     out_vec[0 +: OUT_CH*IN_H1*IN_W1*WIDTH] = o1;
     out_vec[OUT_CH*IN_H1*IN_W1*WIDTH +: OUT_CH*IN_H2*IN_W2*WIDTH] = o2;
     out_vec[(OUT_CH*IN_H1*IN_W1 + OUT_CH*IN_H2*IN_W2)*WIDTH +: OUT_CH*IN_H3*IN_W3*WIDTH] = o3;
