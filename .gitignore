@@ -3,7 +3,6 @@
 /tests/build
 .DS_Store
 prompt.txt
-*.pyc
-networks/mlp/__pycache__/mlp_weights.cpython-313.pyc
-networks/mlp/__pycache__/mlp.cpython-313.pyc
+networks/mlp/mlp_weights.py
 networks/resnet18/resnet18_weights.py
+networks/lenet5/lenet5_weights.py
