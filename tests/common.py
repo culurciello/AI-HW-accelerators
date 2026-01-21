@@ -147,6 +147,11 @@ def build_verilator(
     if quiet:
         result = subprocess.run(cmd, cwd=tb_path.parent, capture_output=True, text=True)
         if result.returncode != 0:
+            if not result.stdout and not result.stderr:
+                noisy_cmd = cmd.copy()
+                if "-Wall" not in noisy_cmd:
+                    noisy_cmd.insert(1, "-Wall")
+                subprocess.run(noisy_cmd, cwd=tb_path.parent, check=False)
             raise AssertionError(
                 "Verilator build failed:\n"
                 f"stdout:\n{result.stdout}\n"
