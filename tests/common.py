@@ -134,15 +134,22 @@ def build_verilator(
         str(build_dir),
         str(tb_path),
     ]
-    if quiet:
-        cmd.insert(1, "--quiet")
-    else:
+    if not quiet:
         cmd.insert(1, "-Wall")
     cmd += [str(src) for src in sv_sources]
     if threads and threads > 1:
         cmd[4:4] = ["--threads", str(threads)]
 
-    subprocess.run(cmd, check=True, cwd=tb_path.parent)
+    if quiet:
+        result = subprocess.run(cmd, cwd=tb_path.parent, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise AssertionError(
+                "Verilator build failed:\n"
+                f"stdout:\n{result.stdout}\n"
+                f"stderr:\n{result.stderr}"
+            )
+    else:
+        subprocess.run(cmd, check=True, cwd=tb_path.parent)
     return build_dir / f"V{top}"
 
 
