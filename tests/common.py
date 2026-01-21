@@ -119,10 +119,10 @@ def build_verilator(
     if clean and build_dir.exists():
         shutil.rmtree(build_dir)
 
+    quiet = os.environ.get("VERILATOR_QUIET", "1") == "1"
     cmd = [
         "verilator",
         "--binary",
-        "-Wall",
         "-Wno-fatal",
         "-CFLAGS",
         "-O3",
@@ -133,7 +133,12 @@ def build_verilator(
         "--Mdir",
         str(build_dir),
         str(tb_path),
-    ] + [str(src) for src in sv_sources]
+    ]
+    if quiet:
+        cmd.insert(1, "--quiet")
+    else:
+        cmd.insert(1, "-Wall")
+    cmd += [str(src) for src in sv_sources]
     if threads and threads > 1:
         cmd[4:4] = ["--threads", str(threads)]
 

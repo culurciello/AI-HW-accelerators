@@ -14,6 +14,21 @@ The repo pairs PyTorch models with fixed-point (Q8.8) SV implementations and Ver
 | yolov8n | TBD |
 
 
+Test PASS running:
+
+`VERILATOR_REUSE=1 VERILATOR_THREADS=16 python tests/test_resnet18_real.py`
+
+runs resnet18 with a input image of a cat in `tests/images/cat.png`
+
+you will get:
+
+```
+SW top1: 283 Persian cat
+HW top1: 283 Persian cat
+PASS
+```
+
+
 ## Layout
 - `networks/`: PyTorch reference models and weight export helpers.
 - `modules/`: SV modules that mirror PyTorch layers (Q8.8).
