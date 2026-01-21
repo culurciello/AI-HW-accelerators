@@ -138,7 +138,11 @@ def build_verilator(
         cmd.insert(1, "-Wall")
     cmd += [str(src) for src in sv_sources]
     if threads and threads > 1:
-        cmd[4:4] = ["--threads", str(threads)]
+        try:
+            cflags_idx = cmd.index("-CFLAGS")
+        except ValueError:
+            cflags_idx = 1
+        cmd[cflags_idx:cflags_idx] = ["--threads", str(threads)]
 
     if quiet:
         result = subprocess.run(cmd, cwd=tb_path.parent, capture_output=True, text=True)
