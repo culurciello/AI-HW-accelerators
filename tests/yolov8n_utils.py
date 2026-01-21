@@ -21,12 +21,37 @@ def bn_scale_bias_q88(bn) -> tuple[torch.Tensor, torch.Tensor]:
     return q88_from_float_tensor(scale), q88_from_float_tensor(bias)
 
 
+def _conv_weight_bias_bn(conv) -> tuple[torch.Tensor, torch.Tensor | None, object | None]:
+    if hasattr(conv, "conv"):
+        weight = conv.conv.weight.detach()
+        bias = conv.conv.bias.detach() if conv.conv.bias is not None else None
+        bn = getattr(conv, "bn", None)
+        return weight, bias, bn
+    weight = conv.weight.detach()
+    bias = conv.bias.detach() if getattr(conv, "bias", None) is not None else None
+    bn = getattr(conv, "bn", None)
+    return weight, bias, bn
+
+
+def _conv_bn_scale_bias_q88(weight: torch.Tensor, bias: torch.Tensor | None, bn) -> tuple[torch.Tensor, torch.Tensor]:
+    if bn is not None:
+        return bn_scale_bias_q88(bn)
+    out_ch = weight.shape[0]
+    scale = torch.ones((out_ch,), dtype=weight.dtype)
+    if bias is None:
+        bias = torch.zeros((out_ch,), dtype=weight.dtype)
+    return q88_from_float_tensor(scale), q88_from_float_tensor(bias)
+
+
 def yolo_conv_q88(x_q: torch.Tensor, conv) -> torch.Tensor:
-    w_q = q88_from_float_tensor(conv.conv.weight.detach())
-    scale_q, bias_q = bn_scale_bias_q88(conv.bn)
+    weight, bias, bn = _conv_weight_bias_bn(conv)
+    w_q = q88_from_float_tensor(weight)
+    scale_q, bias_q = _conv_bn_scale_bias_q88(weight, bias, bn)
+    stride = conv.conv.stride if hasattr(conv, "conv") else conv.stride
+    padding = conv.conv.padding if hasattr(conv, "conv") else conv.padding
     x_ref = x_q.to(torch.float32) / SCALE
     w_ref = w_q.to(torch.float32) / SCALE
-    y_f = F.conv2d(x_ref, w_ref, bias=None, stride=conv.conv.stride, padding=conv.conv.padding)
+    y_f = F.conv2d(x_ref, w_ref, bias=None, stride=stride, padding=padding)
     y_q = q88_from_float_tensor(y_f)
     prod = y_q.to(torch.int32) * scale_q.view(1, -1, 1, 1).to(torch.int32)
     acc = prod + (bias_q.view(1, -1, 1, 1).to(torch.int32) << FRAC)
@@ -117,8 +142,9 @@ def flatten_chw(x_q: torch.Tensor) -> list[int]:
 
 
 def write_conv_bn_files(layer_dir: Path, prefix: str, conv) -> tuple[Path, Path, Path]:
-    w_q = q88_from_float_tensor(conv.conv.weight.detach())
-    scale_q, bias_q = bn_scale_bias_q88(conv.bn)
+    weight, bias, bn = _conv_weight_bias_bn(conv)
+    w_q = q88_from_float_tensor(weight)
+    scale_q, bias_q = _conv_bn_scale_bias_q88(weight, bias, bn)
     w_mem = layer_dir / f"{prefix}_w.mem"
     s_mem = layer_dir / f"{prefix}_bn_scale.mem"
     b_mem = layer_dir / f"{prefix}_bn_bias.mem"
