@@ -4,9 +4,11 @@ from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 import os
 
+from PIL import Image
 import torch
 import torch.nn.functional as F
 import torchvision.models as models
+import torchvision.transforms as transforms
 
 from common import (
     FRAC,
@@ -147,7 +149,19 @@ def test_resnet18_real() -> None:
     def t(name: str) -> torch.Tensor:
         return torch.tensor(state[name], dtype=torch.float32)
 
-    input_f = torch.rand((1, 3, 224, 224), dtype=torch.float32) * 2.0 - 1.0
+    image_path = REPO_ROOT / "tests" / "images" / "cat.png"
+    if not image_path.exists():
+        raise FileNotFoundError(f"Missing image: {image_path}")
+    image = Image.open(image_path).convert("RGB")
+    preprocess = transforms.Compose(
+        [
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
+    input_f = preprocess(image).unsqueeze(0)
     input_q = q88_from_float_tensor(input_f)
 
     conv1_w_q = q88_from_float_tensor(t("conv1.weight"))
@@ -466,10 +480,18 @@ endmodule
     sw_out = out_q.tolist()
     sw_float = [val / SCALE for val in sw_out]
     hw_float = [val / SCALE for val in hw_out]
+    weights = models.ResNet18_Weights.DEFAULT
+    categories = weights.meta.get("categories", [])
+    sw_top1 = int(torch.argmax(torch.tensor(sw_float)).item())
+    hw_top1 = int(torch.argmax(torch.tensor(hw_float)).item())
+    sw_name = categories[sw_top1] if sw_top1 < len(categories) else "unknown"
+    hw_name = categories[hw_top1] if hw_top1 < len(categories) else "unknown"
     print(f"SW (q): {sw_out}")
     print(f"HW (q): {hw_out}")
     print(f"SW (f): {sw_float}")
     print(f"HW (f): {hw_float}")
+    print(f"SW top1: {sw_top1} {sw_name}")
+    print(f"HW top1: {hw_top1} {hw_name}")
     if hw_out != sw_out:
         raise AssertionError(f"Mismatch:\nHW: {hw_out}\nSW: {sw_out}")
     print("PASS")
