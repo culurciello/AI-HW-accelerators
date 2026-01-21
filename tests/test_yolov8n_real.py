@@ -256,20 +256,6 @@ def test_yolov8n_real() -> None:
     out_scales = _run_sw(model, x_q)
     sw_out = flatten_chw(out_scales[0]) + flatten_chw(out_scales[1]) + flatten_chw(out_scales[2])
 
-    results = model.predict(source=str(image_path), imgsz=INPUT_SIZE, conf=0.25, verbose=False)
-    if results:
-        result = results[0]
-        names = result.names or {}
-        boxes = result.boxes
-        print("Predictions:")
-        for xyxy, cls_idx, conf in zip(
-            boxes.xyxy.cpu().tolist(),
-            boxes.cls.cpu().tolist(),
-            boxes.conf.cpu().tolist(),
-        ):
-            label = names.get(int(cls_idx), str(int(cls_idx)))
-            print(f"  {label} conf={conf:.3f} bbox={xyxy}")
-
     build_dir = REPO_ROOT / "tests" / "build" / "yolov8n_real"
     build_dir.mkdir(parents=True, exist_ok=True)
     input_mem = build_dir / "input.mem"
@@ -304,6 +290,21 @@ def test_yolov8n_real() -> None:
     if hw_out != sw_out:
         raise AssertionError("yolov8n output mismatch")
     print("PASS")
+
+    pred_model = load_yolov8n(model_path)
+    results = pred_model.predict(source=str(image_path), imgsz=INPUT_SIZE, conf=0.25, verbose=False)
+    if results:
+        result = results[0]
+        names = result.names or {}
+        boxes = result.boxes
+        print("Predictions:")
+        for xyxy, cls_idx, conf in zip(
+            boxes.xyxy.cpu().tolist(),
+            boxes.cls.cpu().tolist(),
+            boxes.conf.cpu().tolist(),
+        ):
+            label = names.get(int(cls_idx), str(int(cls_idx)))
+            print(f"  {label} conf={conf:.3f} bbox={xyxy}")
 
 
 if __name__ == "__main__":

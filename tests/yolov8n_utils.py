@@ -94,10 +94,10 @@ def concat2d_q88(tensors: list[torch.Tensor]) -> torch.Tensor:
     return torch.cat(tensors, dim=1)
 
 
-def bottleneck_q88(x_q: torch.Tensor, bottleneck) -> torch.Tensor:
+def bottleneck_q88(x_q: torch.Tensor, bottleneck, allow_shortcut: bool = True) -> torch.Tensor:
     y_q = yolo_conv_q88(x_q, bottleneck.cv1)
     y_q = yolo_conv_q88(y_q, bottleneck.cv2)
-    if getattr(bottleneck, "add", False) and x_q.shape == y_q.shape:
+    if allow_shortcut and getattr(bottleneck, "add", False) and x_q.shape == y_q.shape:
         y_q = (x_q + y_q).to(torch.int16)
     return y_q
 
@@ -109,7 +109,7 @@ def c2f_q88(x_q: torch.Tensor, c2f) -> torch.Tensor:
     outs = [x1, x2]
     cur = x2
     for m in c2f.m:
-        cur = bottleneck_q88(cur, m)
+        cur = bottleneck_q88(cur, m, allow_shortcut=False)
         outs.append(cur)
     cat = concat2d_q88(outs)
     return yolo_conv_q88(cat, c2f.cv2)
