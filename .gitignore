@@ -4,3 +4,6 @@
 .DS_Store
 prompt.txt
 *.pyc
+networks/mlp/__pycache__/mlp_weights.cpython-313.pyc
+networks/mlp/__pycache__/mlp.cpython-313.pyc
+networks/resnet18/resnet18_weights.py
