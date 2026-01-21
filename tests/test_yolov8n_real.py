@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 import os
 
+from PIL import Image
 import torch
+import torchvision.transforms as transforms
 
 from common import FRAC, REPO_ROOT, WIDTH, q88_from_float_tensor, read_mem, run_verilator, write_mem
 from yolov8n_utils import (
@@ -238,12 +240,35 @@ def test_yolov8n_real() -> None:
     model_path = REPO_ROOT / "networks" / "yolov8n" / "yolov8n.pt"
     model = load_yolov8n(model_path)
 
-    torch.manual_seed(7)
-    x_f = torch.rand((1, 3, INPUT_SIZE, INPUT_SIZE), dtype=torch.float32) * 2.0 - 1.0
+    image_path = REPO_ROOT / "tests" / "images" / "cat.png"
+    if not image_path.exists():
+        raise FileNotFoundError(f"Missing image: {image_path}")
+    image = Image.open(image_path).convert("RGB")
+    preprocess = transforms.Compose(
+        [
+            transforms.Resize((INPUT_SIZE, INPUT_SIZE)),
+            transforms.ToTensor(),
+        ]
+    )
+    x_f = preprocess(image).unsqueeze(0)
     x_q = q88_from_float_tensor(x_f)
 
     out_scales = _run_sw(model, x_q)
     sw_out = flatten_chw(out_scales[0]) + flatten_chw(out_scales[1]) + flatten_chw(out_scales[2])
+
+    results = model.predict(source=str(image_path), imgsz=INPUT_SIZE, conf=0.25, verbose=False)
+    if results:
+        result = results[0]
+        names = result.names or {}
+        boxes = result.boxes
+        print("Predictions:")
+        for xyxy, cls_idx, conf in zip(
+            boxes.xyxy.cpu().tolist(),
+            boxes.cls.cpu().tolist(),
+            boxes.conf.cpu().tolist(),
+        ):
+            label = names.get(int(cls_idx), str(int(cls_idx)))
+            print(f"  {label} conf={conf:.3f} bbox={xyxy}")
 
     build_dir = REPO_ROOT / "tests" / "build" / "yolov8n_real"
     build_dir.mkdir(parents=True, exist_ok=True)
