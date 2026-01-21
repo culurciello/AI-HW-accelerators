@@ -110,7 +110,6 @@ module c2f #(
   endgenerate
 
   always_comb begin
-    cat_vec = '0;
     cat_vec[0 +: MID_CH*MAP_SIZE] = x1;
     cat_vec[MID_CH*MAP_SIZE +: MID_CH*MAP_SIZE] = x2;
     for (int ci = 0; ci < N; ci = ci + 1) begin
